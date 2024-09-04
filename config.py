@@ -31,7 +31,7 @@ PORT = os.environ.get("PORT", "8083")
 DB_URI = "mongodb+srv://niggroxx:Rath8004@tipu.atrjyqv.mongodb.net/?retryWrites=true&w=majority&appName=tipu"
 DB_NAME = os.environ.get("DATABASE_NAME", "niggroxx")
 
-SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "instantearn.com")
+SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "instantearn.in")
 SHORTLINK_API = os.environ.get("SHORTLINK_API", "f7d362ec353e31b674dd4675409b01a67e0e02a4")
 VERIFY_EXPIRE = int(os.environ.get('VERIFY_EXPIRE', 86400)) # Add time in seconds
 IS_VERIFY = os.environ.get("IS_VERIFY", "True")
