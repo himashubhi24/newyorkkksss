@@ -25,14 +25,14 @@ CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1002086919404"))
 OWNER_ID = int(os.environ.get("OWNER_ID", "6810248021"))
 
 #Port
-PORT = os.environ.get("PORT", "8015")
+PORT = os.environ.get("PORT", "8014")
 
 #Database 
 DB_URI = "mongodb+srv://niggroxx:Rath8004@tipu.atrjyqv.mongodb.net/?retryWrites=true&w=majority&appName=tipu"
 DB_NAME = os.environ.get("DATABASE_NAME", "niggroxx")
 
-SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "earn4link.in")
-SHORTLINK_API = os.environ.get("SHORTLINK_API", "171df76fdbe6e392348f68ebf906e24f1f418377")
+SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "inshorturl.com")
+SHORTLINK_API = os.environ.get("SHORTLINK_API", "0fc7682dbc24201efce25076a06f34a05ef0ea14")
 VERIFY_EXPIRE = int(os.environ.get('VERIFY_EXPIRE', 86400)) # Add time in seconds
 IS_VERIFY = os.environ.get("IS_VERIFY", "True")
 TUT_VID = os.environ.get("TUT_VID","gojfsi/2")
