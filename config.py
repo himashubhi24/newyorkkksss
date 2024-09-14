@@ -25,11 +25,11 @@ CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1002086919404"))
 OWNER_ID = int(os.environ.get("OWNER_ID", "6810248021"))
 
 #Port
-PORT = os.environ.get("PORT", "8077")
+PORT = os.environ.get("PORT", "8078")
 
 #Database 
-DB_URI = "mongodb+srv://niggroxx:Rath8004@tipu.atrjyqv.mongodb.net/?retryWrites=true&w=majority&appName=tipu"
-DB_NAME = os.environ.get("DATABASE_NAME", "niggroxx")
+DB_URI = "mongodb+srv://hoodsitegraphics:PnrXiisxj73wI2vl@hoodsite96.kkrhjnb.mongodb.net/?retryWrites=true&w=majority&appName=hoodsite96"
+DB_NAME = os.environ.get("DATABASE_NAME", "hoodsitegraphics")
 
 SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "inshorturl.com")
 SHORTLINK_API = os.environ.get("SHORTLINK_API", "0fc7682dbc24201efce25076a06f34a05ef0ea14")
