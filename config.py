@@ -32,7 +32,7 @@ DB_URI = "mongodb+srv://hoodsitegraphics:PnrXiisxj73wI2vl@hoodsite96.kkrhjnb.mon
 DB_NAME = os.environ.get("DATABASE_NAME", "hoodsitegraphics")
 
 SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "modijiurl.com")
-SHORTLINK_API = os.environ.get("SHORTLINK_API", "b4751ab33bcc9d0963910b95284c100628896a01")
+SHORTLINK_API = os.environ.get("SHORTLINK_API", "86b59cdd8e78f7bbd894ae007f9b4be9054ddae1")
 VERIFY_EXPIRE = int(os.environ.get('VERIFY_EXPIRE', 86400)) # Add time in seconds
 IS_VERIFY = os.environ.get("IS_VERIFY", "True")
 TUT_VID = os.environ.get("TUT_VID","t.me/tokenbotuse/6")
