@@ -31,8 +31,8 @@ PORT = os.environ.get("PORT", "8087")
 DB_URI = "mongodb+srv://hoodsitegraphics:PnrXiisxj73wI2vl@hoodsite96.kkrhjnb.mongodb.net/?retryWrites=true&w=majority&appName=hoodsite96"
 DB_NAME = os.environ.get("DATABASE_NAME", "hoodsitegraphics")
 
-SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "inshorturl.com")
-SHORTLINK_API = os.environ.get("SHORTLINK_API", "0fc7682dbc24201efce25076a06f34a05ef0ea14")
+SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "reel2earn.com")
+SHORTLINK_API = os.environ.get("SHORTLINK_API", "8ad886c738004eb3922c7a8c96eb3875c99491ef")
 VERIFY_EXPIRE = int(os.environ.get('VERIFY_EXPIRE', 86400)) # Add time in seconds
 IS_VERIFY = os.environ.get("IS_VERIFY", "True")
 TUT_VID = os.environ.get("TUT_VID","t.me/tokenbotuse/6")
