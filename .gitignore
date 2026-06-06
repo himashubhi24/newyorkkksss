@@ -22,3 +22,7 @@ qr*.png
 *.safe_backup
 *.before_*
 *.backup_*
+create_indexes.py
+generate_qr.py
+helper_func_backup.py
+plugins/start.py.current_backup_*
