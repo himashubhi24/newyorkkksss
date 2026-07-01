@@ -32,7 +32,7 @@ from database.database import (
 WAITING_SCREENSHOT = set()
 
 
-async def delete_later(message, delay=300):
+async def delete_later(message, delay=60):
     await asyncio.sleep(delay)
     try:
         await message.delete()
@@ -209,6 +209,9 @@ async def payment_callbacks(client, query):
                     f"Plan: <code>{days} days</code>\n"
                     f"Amount: <code>₹{price}</code>\n"
                     "Pay the exact amount. This QR will close automatically in 1 minute."
+                ),
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("I Paid", callback_data="pay:paid")]]
                 ),
             )
             asyncio.create_task(expire_payment_qr(client, user_id, sent))

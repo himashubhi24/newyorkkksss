@@ -25,6 +25,7 @@ from premium.storage import (
     add_force_sub_channel,
     add_deeplink_admin,
     add_repost_pair,
+    configure_repost_from_first,
     get_deeplink_admins,
     get_force_sub_channels,
     get_userbot_session,
@@ -49,39 +50,42 @@ def panel_markup():
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("🔵 Phone Login", callback_data="premium:phone"),
-                InlineKeyboardButton("🟣 QR Login", callback_data="premium:qr"),
+                InlineKeyboardButton("Phone Login", callback_data="premium:phone"),
+                InlineKeyboardButton("QR Login", callback_data="premium:qr"),
             ],
             [
-                InlineKeyboardButton("🔑 Add Session", callback_data="premium:session"),
-                InlineKeyboardButton("📊 Userbot Status", callback_data="premium:status"),
+                InlineKeyboardButton("Add Session", callback_data="premium:session"),
+                InlineKeyboardButton("Userbot Status", callback_data="premium:status"),
             ],
             [
-                InlineKeyboardButton("📥 Add Source/Target", callback_data="premium:add_pair"),
-                InlineKeyboardButton("🗑 Remove Pair", callback_data="premium:remove_pair"),
-            ],
-            [InlineKeyboardButton("⏱ Set Repost Interval", callback_data="premium:set_interval")],
-            [
-                InlineKeyboardButton("🟢 Add Link Admin", callback_data="premium:add_link_admin"),
-                InlineKeyboardButton("🔴 Remove Link Admin", callback_data="premium:remove_link_admin"),
-            ],
-            [InlineKeyboardButton("🔵 List Link Admins", callback_data="premium:list_link_admins")],
-            [
-                InlineKeyboardButton("🟢 Enable Repost", callback_data="premium:enable"),
-                InlineKeyboardButton("🔴 Disable Repost", callback_data="premium:disable"),
+                InlineKeyboardButton("Add Source/Target", callback_data="premium:add_pair"),
+                InlineKeyboardButton("Remove Pair", callback_data="premium:remove_pair"),
             ],
             [
-                InlineKeyboardButton("🔵 Normal Join", callback_data="premium:add_fsub"),
-                InlineKeyboardButton("🟣 Request Join", callback_data="premium:add_request_fsub"),
+                InlineKeyboardButton("Set Interval", callback_data="premium:set_interval"),
+                InlineKeyboardButton("Start From First", callback_data="premium:start_first"),
             ],
             [
-                InlineKeyboardButton("➖ Remove Force Sub", callback_data="premium:remove_fsub"),
+                InlineKeyboardButton("Add Link Admin", callback_data="premium:add_link_admin"),
+                InlineKeyboardButton("Remove Link Admin", callback_data="premium:remove_link_admin"),
+            ],
+            [InlineKeyboardButton("List Link Admins", callback_data="premium:list_link_admins")],
+            [
+                InlineKeyboardButton("Enable Repost", callback_data="premium:enable"),
+                InlineKeyboardButton("Disable Repost", callback_data="premium:disable"),
             ],
             [
-                InlineKeyboardButton("📋 Repost Status", callback_data="premium:repost_status"),
-                InlineKeyboardButton("🚪 Remove Userbot", callback_data="premium:remove_session"),
+                InlineKeyboardButton("Normal Join", callback_data="premium:add_fsub"),
+                InlineKeyboardButton("Request Join", callback_data="premium:add_request_fsub"),
             ],
-            [InlineKeyboardButton("✖️ Close", callback_data="premium:close")],
+            [
+                InlineKeyboardButton("Remove Force Sub", callback_data="premium:remove_fsub"),
+            ],
+            [
+                InlineKeyboardButton("Repost Status", callback_data="premium:repost_status"),
+                InlineKeyboardButton("Remove Userbot", callback_data="premium:remove_session"),
+            ],
+            [InlineKeyboardButton("Close", callback_data="premium:close")],
         ]
     )
 
@@ -228,6 +232,13 @@ async def premium_callbacks(client, query):
             await query.message.reply_text(
                 "⏱ Send: <code>-100SOURCE -100TARGET HOURS</code>\n"
                 "Use <code>0</code> for instant repost or <code>1-24</code> hours."
+            )
+            return
+        if action == "start_first":
+            PENDING[admin_id] = "start_first"
+            await query.answer("Send source and target")
+            await query.message.reply_text(
+                "Send <code>-100SOURCE -100TARGET</code>. Existing interval will be used."
             )
             return
         if action == "add_link_admin":
@@ -458,6 +469,26 @@ async def premium_pending_input(client, message):
             await restart_worker(client)
             mode = "instant" if hours == 0 else f"every {hours} hour(s)"
             await message.reply_text(f"✅ Repost interval successfully set to <code>{mode}</code>.")
+        elif action == "start_first":
+            parts = text.split()
+            if len(parts) != 2:
+                raise ValueError("Send exactly: -100SOURCE -100TARGET")
+            source, target = map(int, parts)
+            worker = getattr(client, "auto_repost_worker", None)
+            if not worker or not worker.connected:
+                raise RuntimeError("Userbot is not connected; add session and enable repost first")
+            latest = None
+            async for item in worker.client.get_chat_history(source, limit=1):
+                latest = item
+            if not latest:
+                raise RuntimeError("Source channel has no posts")
+            if not await configure_repost_from_first(source, target, latest.id, admin_id):
+                raise RuntimeError("No matching active source/target pair found")
+            PENDING.pop(admin_id, None)
+            await message.reply_text(
+                f"✅ Backfill started from the first valid post through message <code>{latest.id}</code>. "
+                "The configured interval will be used."
+            )
         elif action in ("add_fsub", "add_request_fsub"):
             channel_id = int(text)
             chat = await client.get_chat(channel_id)

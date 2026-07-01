@@ -159,14 +159,40 @@ async def enqueue_repost(source, target, message_id):
     )
 
 
+async def configure_repost_from_first(source, target, end_message_id, updated_by=None):
+    result = await repost_pairs.update_one(
+        {"source": int(source), "target": int(target), "active": True},
+        {
+            "$set": {
+                "backfill_cursor": 1,
+                "backfill_end": int(end_message_id),
+                "backfill_active": True,
+                "next_post_at": None,
+                "updated_at": _now(),
+                "updated_by": updated_by,
+            }
+        },
+    )
+    return result.matched_count
+
+
 async def get_due_repost_pairs(now):
     query = {
         "active": True,
-        "pending_message_ids.0": {"$exists": True},
-        "$or": [
-            {"next_post_at": {"$exists": False}},
-            {"next_post_at": None},
-            {"next_post_at": {"$lte": now}},
+        "$and": [
+            {
+                "$or": [
+                    {"pending_message_ids.0": {"$exists": True}},
+                    {"backfill_active": True},
+                ]
+            },
+            {
+                "$or": [
+                    {"next_post_at": {"$exists": False}},
+                    {"next_post_at": None},
+                    {"next_post_at": {"$lte": now}},
+                ]
+            },
         ],
     }
     return [item async for item in repost_pairs.find(query)]
@@ -185,6 +211,29 @@ async def complete_queued_repost(source, target, message_id, interval_hours):
                 "next_post_at": next_post_at,
             },
         },
+    )
+
+
+async def advance_backfill(source, target, next_message_id, end_message_id, interval_hours, posted):
+    done = int(next_message_id) > int(end_message_id)
+    update = {
+        "backfill_cursor": int(next_message_id),
+        "backfill_active": not done,
+        "last_error": None,
+    }
+    if posted:
+        update.update(
+            {
+                "last_post_at": _now(),
+                "next_post_at": _now() + timedelta(hours=max(0, int(interval_hours))),
+            }
+        )
+    result = {"$set": update}
+    if posted:
+        result["$inc"] = {"processed": 1}
+    await repost_pairs.update_one(
+        {"source": int(source), "target": int(target)},
+        result,
     )
 
 

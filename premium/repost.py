@@ -6,6 +6,7 @@ from pyrogram.handlers import MessageHandler
 
 from config import API_HASH, APP_ID, AUTO_REPOST_ENABLED, LOGGER
 from premium.storage import (
+    advance_backfill,
     get_userbot_session,
     complete_queued_repost,
     enqueue_repost,
@@ -149,11 +150,14 @@ class AutoRepostWorker:
         now = datetime.now(timezone.utc)
         for pair in await get_due_repost_pairs(now):
             pending = pair.get("pending_message_ids") or []
+            source, target = int(pair["source"]), int(pair["target"])
+            interval = int(pair.get("interval_hours") or 0)
+            if pair.get("backfill_active"):
+                await self._process_backfill(pair, source, target, interval)
+                continue
             if not pending:
                 continue
-            source, target = int(pair["source"]), int(pair["target"])
             message_id = int(pending[0])
-            interval = int(pair.get("interval_hours") or 0)
             try:
                 message = await self.client.get_messages(source, message_id)
                 if not message or getattr(message, "empty", False):
@@ -170,3 +174,27 @@ class AutoRepostWorker:
             except Exception as exc:
                 await mark_repost_error(source, target, exc)
                 logger.exception("Scheduled repost failed source=%s target=%s", source, target)
+
+    async def _process_backfill(self, pair, source, target, interval):
+        cursor = int(pair.get("backfill_cursor") or 1)
+        end = int(pair.get("backfill_end") or 0)
+        while cursor <= end:
+            message = await self.client.get_messages(source, cursor)
+            if message and not getattr(message, "empty", False) and not getattr(message, "service", None):
+                try:
+                    await message.copy(target)
+                    await advance_backfill(source, target, cursor + 1, end, interval, True)
+                    logger.info(
+                        "Backfill repost completed source=%s message=%s target=%s next=%sh",
+                        source,
+                        cursor,
+                        target,
+                        interval,
+                    )
+                except Exception as exc:
+                    await mark_repost_error(source, target, exc)
+                    logger.exception("Backfill repost failed source=%s target=%s", source, target)
+                return
+            cursor += 1
+        await advance_backfill(source, target, cursor, end, interval, False)
+        logger.info("Backfill completed source=%s target=%s", source, target)

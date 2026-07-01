@@ -4,6 +4,7 @@ from pyrogram.errors import UserNotParticipant
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot import Bot
+from premium.cleanup import schedule_delete
 from premium.storage import get_force_sub_channels, has_join_request, remember_join_request
 
 
@@ -37,6 +38,7 @@ async def missing_channels(client, user_id):
 
 @Bot.on_message(filters.command("start") & filters.private, group=-200)
 async def premium_force_sub_gate(client, message):
+    schedule_delete(message)
     missing = await missing_channels(client, message.from_user.id)
     if not missing:
         return
@@ -49,11 +51,12 @@ async def premium_force_sub_gate(client, message):
     if payload:
         retry += f"?start={payload}"
     rows.append([InlineKeyboardButton("✅ I Joined • Try Again", url=retry)])
-    await message.reply_text(
+    gate_page = await message.reply_text(
         "<b>🔐 Premium Access Gate</b>\n\nJoin the required channel(s), then tap Try Again.",
         reply_markup=InlineKeyboardMarkup(rows),
         disable_web_page_preview=True,
     )
+    schedule_delete(gate_page)
     raise StopPropagation
 
 

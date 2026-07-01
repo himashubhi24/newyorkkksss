@@ -1,7 +1,7 @@
 import asyncio
 
 
-async def delete_later(message, delay=300):
+async def delete_later(message, delay=60):
     await asyncio.sleep(delay)
     try:
         await message.delete()
@@ -9,7 +9,7 @@ async def delete_later(message, delay=300):
         pass
 
 
-def schedule_delete(*messages, delay=300):
+def schedule_delete(*messages, delay=60):
     for message in messages:
         if message:
             asyncio.create_task(delete_later(message, delay))
