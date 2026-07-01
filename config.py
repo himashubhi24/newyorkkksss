@@ -103,7 +103,12 @@ def parse_premium_plans(raw):
 PREMIUM_PLANS = parse_premium_plans(os.environ.get("PREMIUM_PLANS", ""))
 UPI_ID = os.environ.get("UPI_ID", "").strip()
 UPI_NAME = os.environ.get("UPI_NAME", "Premium Access").strip()
-PAYMENT_REVIEW_CHAT = int(os.environ.get("PAYMENT_REVIEW_CHAT", str(OWNER_ID)))
+PAYMENT_REVIEW_CHAT = os.environ.get("PAYMENT_REVIEW_CHAT", str(OWNER_ID)).strip()
+if PAYMENT_REVIEW_CHAT.lstrip("-").isdigit():
+    PAYMENT_REVIEW_CHAT = int(PAYMENT_REVIEW_CHAT)
+PREMIUM_REPORT_CHAT = os.environ.get("PREMIUM_REPORT_CHAT", str(PAYMENT_REVIEW_CHAT)).strip()
+if PREMIUM_REPORT_CHAT.lstrip("-").isdigit():
+    PREMIUM_REPORT_CHAT = int(PREMIUM_REPORT_CHAT)
 PAYMENT_EXPIRY_MINUTES = int(os.environ.get("PAYMENT_EXPIRY_MINUTES", "30"))
 
 LOG_FILE_NAME = "filesharingbot.txt"

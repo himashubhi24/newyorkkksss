@@ -125,6 +125,17 @@ async def update_pending_plan(user_id: int, **values):
     await pending_plans.update_one({'_id': int(user_id)}, {'$set': values})
 
 
+async def claim_payment_submission(user_id: int):
+    result = await pending_plans.update_one(
+        {
+            '_id': int(user_id),
+            'status': {'$ne': 'submitted'},
+        },
+        {'$set': {'status': 'submitted', 'submitted_at': datetime.utcnow()}},
+    )
+    return result.modified_count == 1
+
+
 async def clear_pending_plan(user_id: int):
     return (await pending_plans.delete_one({'_id': int(user_id)})).deleted_count
 
@@ -141,6 +152,16 @@ async def add_payment_log(user_id, username, plan_days, amount, status, reviewed
             'date': datetime.utcnow(),
         }
     )
+
+
+async def get_approved_payments_between(start, end):
+    cursor = payment_logs.find(
+        {
+            'status': 'Approved',
+            'date': {'$gte': start, '$lt': end},
+        }
+    ).sort('date', 1)
+    return [item async for item in cursor]
 
 
 async def premium_expiry_candidates(now, reminder_until):

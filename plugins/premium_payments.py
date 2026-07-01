@@ -1,4 +1,5 @@
 import asyncio
+import html
 from datetime import datetime, timedelta
 from io import BytesIO
 from urllib.parse import quote
@@ -19,16 +20,36 @@ from config import (
 from database.database import (
     add_payment_log,
     check_premium_access,
+    claim_payment_submission,
     clear_pending_plan,
     get_pending_plan,
     give_premium,
     remove_premium,
     set_pending_plan,
-    update_pending_plan,
 )
 
 
 WAITING_SCREENSHOT = set()
+
+
+async def delete_later(message, delay=300):
+    await asyncio.sleep(delay)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+
+async def delete_page(message, include_command=False):
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    if include_command and getattr(message, "reply_to_message", None):
+        try:
+            await message.reply_to_message.delete()
+        except Exception:
+            pass
 
 
 @Bot.on_message(filters.command("mypremium") & filters.private, group=-90)
@@ -55,6 +76,15 @@ async def add_premium_command(client, message):
             raise ValueError("Usage: /addpremium USER_ID DAYS")
         user_id, days = map(int, message.command[1:])
         expiry = await give_premium(user_id, days)
+        user = await client.get_users(user_id)
+        await add_payment_log(
+            user_id,
+            getattr(user, "username", None),
+            days,
+            0,
+            "Approved",
+            message.from_user.id,
+        )
         await message.reply_text(
             f"✅ Premium extended by <code>{days}</code> day(s).\n"
             f"New expiry: <code>{expiry.strftime('%d %b %Y, %I:%M %p')}</code>"
@@ -110,12 +140,14 @@ def upi_url(days, price):
 
 async def send_plan_menu(message, user_id):
     if not PREMIUM_PLANS or not UPI_ID:
-        return await message.reply_text(
+        sent = await message.reply_text(
             "⚠️ Premium payments are not configured yet. Please contact the administrator."
         )
+        asyncio.create_task(delete_later(sent))
+        return sent
     current = await check_premium_access(user_id)
     status = current.strftime("%d %b %Y, %I:%M %p") if current else "Not active"
-    await message.reply_text(
+    return await message.reply_text(
         "<b>💎 Premium Access</b>\n\n"
         f"Current expiry: <code>{status}</code>\n\n"
         "Choose a plan. Existing active time is automatically extended.",
@@ -127,6 +159,7 @@ async def send_plan_menu(message, user_id):
 async def buy_access(client, query):
     await query.answer("Choose a premium plan")
     await send_plan_menu(query.message, query.from_user.id)
+    await delete_page(query.message, include_command=True)
 
 
 @Bot.on_callback_query(filters.regex(r"^pay:"), group=-90)
@@ -150,33 +183,38 @@ async def payment_callbacks(client, query):
             image.save(buffer, format="PNG")
             buffer.seek(0)
             await query.answer("Payment QR generated")
-            await query.message.reply_photo(
+            sent = await query.message.reply_photo(
                 buffer,
                 caption=(
                     f"<b>💳 Premium Payment</b>\n\n"
                     f"Plan: <code>{days} days</code>\n"
                     f"Amount: <code>₹{price}</code>\n"
-                    f"UPI: <code>{UPI_ID}</code>\n\n"
                     "Pay the exact amount, then tap I Paid and send the payment screenshot."
                 ),
                 reply_markup=InlineKeyboardMarkup(
                     [[InlineKeyboardButton("✅ I Paid", callback_data="pay:paid")]]
                 ),
             )
+            await delete_page(query.message)
             return
         if action == "paid":
             plan = await get_pending_plan(user_id)
             if not plan:
                 raise RuntimeError("No pending payment plan found")
+            if plan.get("status") == "submitted":
+                await query.answer("Screenshot already submitted", show_alert=True)
+                return
             created = plan.get("created_at")
             if created and datetime.utcnow() - created > timedelta(minutes=PAYMENT_EXPIRY_MINUTES):
                 await clear_pending_plan(user_id)
                 raise RuntimeError("Payment session expired; select the plan again")
             WAITING_SCREENSHOT.add(user_id)
             await query.answer("Send payment screenshot", show_alert=True)
-            await query.message.reply_text(
+            prompt = await query.message.reply_text(
                 "📸 Send your payment screenshot now. Premium activates only after admin approval."
             )
+            asyncio.create_task(delete_later(prompt))
+            await delete_page(query.message)
             return
         if action in ("approve", "reject"):
             if user_id not in ADMINS:
@@ -221,21 +259,35 @@ async def payment_callbacks(client, query):
 async def payment_screenshot(client, message):
     user_id = message.from_user.id
     if user_id not in WAITING_SCREENSHOT:
+        plan = await get_pending_plan(user_id)
+        if plan and plan.get("status") == "submitted":
+            await message.delete()
+            notice = await client.send_message(user_id, "ℹ️ Screenshot already submitted. Please wait for review.")
+            asyncio.create_task(delete_later(notice))
+            raise StopPropagation
         return
+    WAITING_SCREENSHOT.discard(user_id)
     plan = await get_pending_plan(user_id)
     if not plan:
-        WAITING_SCREENSHOT.discard(user_id)
         await message.reply_text("❌ Payment session expired. Choose a plan again.")
         raise StopPropagation
     if message.document and not str(message.document.mime_type or "").startswith("image/"):
         await message.reply_text("Send an image screenshot only.")
         raise StopPropagation
-    WAITING_SCREENSHOT.discard(user_id)
-    await update_pending_plan(user_id, status="submitted", submitted_at=datetime.utcnow())
+    if not await claim_payment_submission(user_id):
+        await message.delete()
+        notice = await client.send_message(user_id, "ℹ️ Screenshot already submitted. Please wait for review.")
+        asyncio.create_task(delete_later(notice))
+        raise StopPropagation
+    if message.from_user.username:
+        identity = f'<a href="https://t.me/{html.escape(message.from_user.username)}">@{html.escape(message.from_user.username)}</a>'
+    else:
+        display = html.escape(message.from_user.first_name or str(user_id))
+        identity = f'<a href="tg://user?id={user_id}">{display}</a>'
     caption = (
         "<b>🧾 Payment Review</b>\n\n"
         f"User: <code>{user_id}</code>\n"
-        f"Username: <code>@{message.from_user.username or '-'}</code>\n"
+        f"Profile: {identity}\n"
         f"Plan: <code>{plan['days']} days</code>\n"
         f"Amount: <code>₹{plan['price']}</code>"
     )
@@ -249,5 +301,7 @@ async def payment_screenshot(client, message):
         await client.send_photo(PAYMENT_REVIEW_CHAT, message.photo.file_id, caption=caption, reply_markup=markup)
     else:
         await client.send_document(PAYMENT_REVIEW_CHAT, message.document.file_id, caption=caption, reply_markup=markup)
-    await message.reply_text("✅ Screenshot submitted. You will be notified after admin review.")
+    await message.delete()
+    notice = await client.send_message(user_id, "✅ Screenshot received. Please wait while the administrator reviews it.")
+    asyncio.create_task(delete_later(notice))
     raise StopPropagation

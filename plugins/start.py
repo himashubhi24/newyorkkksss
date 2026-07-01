@@ -21,9 +21,11 @@ from config import (
 )
 from helper_func import subscribed, encode, decode, get_messages
 from database.database import add_user, check_premium_access, del_user, full_userbase, present_user
+from premium.cleanup import schedule_delete
 
 @Bot.on_message(filters.command('start') & filters.private & subscribed)
 async def start_command(client: Client, message: Message):
+    schedule_delete(message)
     id = message.from_user.id
     owner_id = ADMINS  # Fetch the owner's ID from config
 
@@ -72,13 +74,15 @@ async def start_command(client: Client, message: Message):
                 return
             premium_expiry = await check_premium_access(id)
             if not premium_expiry:
-                return await message.reply_text(
+                premium_message = await message.reply_text(
                     "<b>🔒 Premium Access Required</b>\n\n"
                     "Purchase premium to open protected file links.",
                     reply_markup=InlineKeyboardMarkup(
                         [[InlineKeyboardButton("✨ Get Premium", callback_data="buy_access")]]
                     ),
                 )
+                schedule_delete(premium_message)
+                return
             temp_msg = await message.reply("Please wait...")
             try:
                 messages = await get_messages(client, ids)
@@ -99,11 +103,13 @@ async def start_command(client: Client, message: Message):
                     reply_markup = None
 
                 try:
-                    await msg.copy(chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
+                    sent = await msg.copy(chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
+                    schedule_delete(sent)
                     await asyncio.sleep(0.5)
                 except FloodWait as e:
                     await asyncio.sleep(e.x)
-                    await msg.copy(chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
+                    sent = await msg.copy(chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
+                    schedule_delete(sent)
                 except:
                     pass
 
@@ -122,7 +128,7 @@ async def start_command(client: Client, message: Message):
                      InlineKeyboardButton("Close", callback_data="close")],
                 ]
             )
-            await message.reply_text(
+            start_page = await message.reply_text(
                 text=(
                     f"<b>👤 {message.from_user.first_name}</b>\n\n"
                     f"Status: <code>{status}</code>\n"
@@ -132,6 +138,7 @@ async def start_command(client: Client, message: Message):
                 disable_web_page_preview=True,
                 quote=True
             )
+            schedule_delete(start_page)
 
 # ... (rest of the code remains unchanged))
 
@@ -150,6 +157,7 @@ REPLY_ERROR = """<code>Use this command as a replay to any telegram message with
     
 @Bot.on_message(filters.command('start') & filters.private)
 async def not_joined(client: Client, message: Message):
+    schedule_delete(message)
     buttons = [
         [
             InlineKeyboardButton(
@@ -169,7 +177,7 @@ async def not_joined(client: Client, message: Message):
     except IndexError:
         pass
 
-    await message.reply(
+    join_page = await message.reply(
         text = FORCE_MSG.format(
                 first = message.from_user.first_name,
                 last = message.from_user.last_name,
@@ -181,6 +189,7 @@ async def not_joined(client: Client, message: Message):
         quote = True,
         disable_web_page_preview = True
     )
+    schedule_delete(join_page)
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
 async def get_users(client: Bot, message: Message):
