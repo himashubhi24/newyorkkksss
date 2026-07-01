@@ -1,4 +1,7 @@
 Bot.session*
+.env
+.env.*
+!.env.example
 *.session*
 *.session-journal
 *.session-wal
