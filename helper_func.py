@@ -18,6 +18,18 @@ from database.database import user_data, db_verify_status, db_update_verify_stat
 #logger.setLevel(logging.INFO)
 
 async def is_subscribed(filter, client, update):
+    # The dynamic premium gate runs before the original /start handler and
+    # supports request-to-join channels. Do not gate the same request again
+    # with the legacy membership-only FORCE_SUB_CHANNEL check.
+    try:
+        from premium.storage import get_force_sub_channels
+
+        if await get_force_sub_channels():
+            return True
+    except Exception as exc:
+        client.LOGGER(__name__).warning(
+            "Dynamic force-sub lookup failed; using legacy check: %s", exc
+        )
     if not FORCE_SUB_CHANNEL:
         return True
     user_id = update.from_user.id
