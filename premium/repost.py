@@ -6,6 +6,7 @@ from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler
 
 from config import API_HASH, APP_ID, AUTO_REPOST_ENABLED, LOGGER
+from premium.conversion import convert_post, extract_deeplinks, publish_converted
 from premium.storage import (
     advance_backfill,
     get_userbot_session,
@@ -35,11 +36,12 @@ def message_text(message):
 
 
 def has_deeplink(message):
-    return bool(DEEPLINK_RE.search(message_text(message)))
+    return bool(extract_deeplinks(message))
 
 
 class AutoRepostWorker:
-    def __init__(self):
+    def __init__(self, bot):
+        self.bot = bot
         self.client = None
         self._lock = asyncio.Lock()
         self.queue_task = None
@@ -153,7 +155,10 @@ class AutoRepostWorker:
                 )
                 continue
             try:
-                await message.copy(target)
+                converted = await self._convert_required(message, target)
+                if not converted:
+                    continue
+                await publish_converted(client, target, message, converted)
                 await mark_repost_processed(source, target)
                 logger.info("Reposted source=%s message=%s target=%s", source, message.id, target)
             except Exception as exc:
@@ -194,7 +199,11 @@ class AutoRepostWorker:
                         message_id,
                     )
                     continue
-                await message.copy(target)
+                converted = await self._convert_required(message, target)
+                if not converted:
+                    await discard_queued_repost(source, target, message_id, "conversion failed; send blocked")
+                    continue
+                await publish_converted(self.client, target, message, converted)
                 await complete_queued_repost(source, target, message_id, interval)
                 logger.info(
                     "Scheduled repost completed source=%s message=%s target=%s next=%sh",
@@ -219,7 +228,11 @@ class AutoRepostWorker:
                 and has_deeplink(message)
             ):
                 try:
-                    await message.copy(target)
+                    converted = await self._convert_required(message, target)
+                    if not converted:
+                        await advance_backfill(source, target, cursor + 1, end, interval, False)
+                        return
+                    await publish_converted(self.client, target, message, converted)
                     await advance_backfill(source, target, cursor + 1, end, interval, True)
                     logger.info(
                         "Backfill repost completed source=%s message=%s target=%s next=%sh",
@@ -235,3 +248,53 @@ class AutoRepostWorker:
             cursor += 1
         await advance_backfill(source, target, cursor, end, interval, False)
         logger.info("Backfill completed source=%s target=%s", source, target)
+
+    async def _convert_required(self, message, target):
+        session_found = bool(await get_userbot_session())
+        selected_bot = getattr(self.bot, "username", None) or "unknown"
+        base = (
+            "source_message_id=%s target_channel_id=%s selected_repost_bot=%s "
+            "session_found=%s"
+        )
+        if not session_found:
+            reason = "Deeplink conversion skipped because this repost bot has no per-bot userbot session."
+            logger.error(
+                base + " deeplink_conversion_started=false deeplink_conversion_success=false send_blocked=true reason=%s",
+                message.id,
+                target,
+                selected_bot,
+                False,
+                reason,
+            )
+            return None
+        logger.info(
+            base + " deeplink_conversion_started=true deeplink_conversion_success=false send_blocked=true reason=conversion_started",
+            message.id,
+            target,
+            selected_bot,
+            True,
+        )
+        try:
+            converted = await convert_post(self.bot, self.client, message, logger)
+        except Exception as exc:
+            logger.exception(
+                base + " deeplink_conversion_started=true deeplink_conversion_success=false send_blocked=true reason=%s",
+                message.id,
+                target,
+                selected_bot,
+                True,
+                exc,
+            )
+            return None
+        success = bool(converted)
+        logger.info(
+            base + " deeplink_conversion_started=true deeplink_conversion_success=%s send_blocked=%s reason=%s",
+            message.id,
+            target,
+            selected_bot,
+            True,
+            success,
+            not success,
+            "conversion_complete" if success else "conversion_failed",
+        )
+        return converted

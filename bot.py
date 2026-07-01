@@ -78,7 +78,7 @@ class Bot(Client):
 
         from premium.repost import AutoRepostWorker
 
-        self.auto_repost_worker = AutoRepostWorker()
+        self.auto_repost_worker = AutoRepostWorker(self)
         try:
             await self.auto_repost_worker.start()
         except Exception as exc:
