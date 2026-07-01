@@ -1,4 +1,5 @@
 import asyncio
+import re
 from datetime import datetime, timezone
 
 from pyrogram import Client, filters
@@ -9,6 +10,7 @@ from premium.storage import (
     advance_backfill,
     get_userbot_session,
     complete_queued_repost,
+    discard_queued_repost,
     enqueue_repost,
     get_due_repost_pairs,
     is_auto_repost_enabled,
@@ -19,6 +21,21 @@ from premium.storage import (
 
 
 logger = LOGGER(__name__)
+
+DEEPLINK_RE = re.compile(
+    r"(?:https?://)?(?:t\.me|telegram\.me)/[A-Za-z0-9_]+\?start=[A-Za-z0-9_\-=]+"
+    r"|@[A-Za-z0-9_]+\?start=[A-Za-z0-9_\-=]+",
+    re.IGNORECASE,
+)
+
+
+def message_text(message):
+    text = getattr(message, "caption", None) or getattr(message, "text", None) or ""
+    return text.html if hasattr(text, "html") else str(text)
+
+
+def has_deeplink(message):
+    return bool(DEEPLINK_RE.search(message_text(message)))
 
 
 class AutoRepostWorker:
@@ -115,6 +132,13 @@ class AutoRepostWorker:
     async def _on_channel_post(self, client, message):
         pairs = await list_repost_pairs(active_only=True)
         targets = [item for item in pairs if int(item["source"]) == int(message.chat.id)]
+        if targets and not has_deeplink(message):
+            logger.info(
+                "Auto repost skipped source=%s message=%s: no deeplink",
+                message.chat.id,
+                message.id,
+            )
+            return
         for pair in targets:
             source, target = int(pair["source"]), int(pair["target"])
             interval = int(pair.get("interval_hours") or 0)
@@ -162,6 +186,14 @@ class AutoRepostWorker:
                 message = await self.client.get_messages(source, message_id)
                 if not message or getattr(message, "empty", False):
                     raise RuntimeError(f"Source message {message_id} is unavailable")
+                if not has_deeplink(message):
+                    await discard_queued_repost(source, target, message_id, "skipped: no deeplink")
+                    logger.info(
+                        "Scheduled repost skipped source=%s message=%s: no deeplink",
+                        source,
+                        message_id,
+                    )
+                    continue
                 await message.copy(target)
                 await complete_queued_repost(source, target, message_id, interval)
                 logger.info(
@@ -180,7 +212,12 @@ class AutoRepostWorker:
         end = int(pair.get("backfill_end") or 0)
         while cursor <= end:
             message = await self.client.get_messages(source, cursor)
-            if message and not getattr(message, "empty", False) and not getattr(message, "service", None):
+            if (
+                message
+                and not getattr(message, "empty", False)
+                and not getattr(message, "service", None)
+                and has_deeplink(message)
+            ):
                 try:
                     await message.copy(target)
                     await advance_backfill(source, target, cursor + 1, end, interval, True)

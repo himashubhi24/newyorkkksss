@@ -214,6 +214,19 @@ async def complete_queued_repost(source, target, message_id, interval_hours):
     )
 
 
+async def discard_queued_repost(source, target, message_id, reason):
+    await repost_pairs.update_one(
+        {"source": int(source), "target": int(target)},
+        {
+            "$pull": {"pending_message_ids": int(message_id)},
+            "$set": {
+                "last_error": str(reason)[:500],
+                "last_error_at": _now(),
+            },
+        },
+    )
+
+
 async def advance_backfill(source, target, next_message_id, end_message_id, interval_hours, posted):
     done = int(next_message_id) > int(end_message_id)
     update = {
