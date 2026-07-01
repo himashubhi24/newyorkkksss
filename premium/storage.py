@@ -58,6 +58,34 @@ async def set_auto_repost_enabled(enabled, updated_by=None):
     return await set_setting("auto_repost_enabled", bool(enabled), updated_by)
 
 
+async def get_deeplink_admins():
+    value = await get_setting("deeplink_admins", [])
+    return [int(user_id) for user_id in value] if isinstance(value, list) else []
+
+
+async def add_deeplink_admin(user_id, updated_by=None):
+    admins = await get_deeplink_admins()
+    user_id = int(user_id)
+    if user_id not in admins:
+        admins.append(user_id)
+        await set_setting("deeplink_admins", admins, updated_by)
+    return user_id
+
+
+async def remove_deeplink_admin(user_id, updated_by=None):
+    admins = await get_deeplink_admins()
+    user_id = int(user_id)
+    remaining = [item for item in admins if item != user_id]
+    if len(remaining) == len(admins):
+        return 0
+    await set_setting("deeplink_admins", remaining, updated_by)
+    return 1
+
+
+async def is_deeplink_admin(user_id):
+    return int(user_id) in await get_deeplink_admins()
+
+
 async def add_repost_pair(source, target, updated_by=None, interval_hours=0):
     result = await repost_pairs.update_one(
         {"source": int(source), "target": int(target)},

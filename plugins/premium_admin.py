@@ -23,12 +23,15 @@ from premium.session import (
 )
 from premium.storage import (
     add_force_sub_channel,
+    add_deeplink_admin,
     add_repost_pair,
+    get_deeplink_admins,
     get_force_sub_channels,
     get_userbot_session,
     is_auto_repost_enabled,
     list_repost_pairs,
     remove_force_sub_channel,
+    remove_deeplink_admin,
     remove_repost_pair,
     remove_userbot_session,
     save_userbot_session,
@@ -58,6 +61,11 @@ def panel_markup():
                 InlineKeyboardButton("🗑 Remove Pair", callback_data="premium:remove_pair"),
             ],
             [InlineKeyboardButton("⏱ Set Repost Interval", callback_data="premium:set_interval")],
+            [
+                InlineKeyboardButton("🟢 Add Link Admin", callback_data="premium:add_link_admin"),
+                InlineKeyboardButton("🔴 Remove Link Admin", callback_data="premium:remove_link_admin"),
+            ],
+            [InlineKeyboardButton("🔵 List Link Admins", callback_data="premium:list_link_admins")],
             [
                 InlineKeyboardButton("🟢 Enable Repost", callback_data="premium:enable"),
                 InlineKeyboardButton("🔴 Disable Repost", callback_data="premium:disable"),
@@ -220,6 +228,27 @@ async def premium_callbacks(client, query):
             await query.message.reply_text(
                 "⏱ Send: <code>-100SOURCE -100TARGET HOURS</code>\n"
                 "Use <code>0</code> for instant repost or <code>1-24</code> hours."
+            )
+            return
+        if action == "add_link_admin":
+            PENDING[admin_id] = "add_link_admin"
+            await query.answer("Send Telegram user ID")
+            await query.message.reply_text(
+                "Send the numeric user ID. This admin will only be able to create deeplinks."
+            )
+            return
+        if action == "remove_link_admin":
+            PENDING[admin_id] = "remove_link_admin"
+            await query.answer("Send Telegram user ID")
+            await query.message.reply_text("Send the numeric deeplink-admin user ID to remove.")
+            return
+        if action == "list_link_admins":
+            admins = await get_deeplink_admins()
+            lines = "\n".join(f"<code>{user_id}</code>" for user_id in admins) or "None"
+            await query.answer("Link admins refreshed")
+            await query.message.reply_text(
+                "<b>🔗 Deeplink-only Admins</b>\n\n" + lines
+                + "\n\nAllowed: media upload, /genlink and /batch only."
             )
             return
         if action == "enable":
@@ -389,6 +418,21 @@ async def premium_pending_input(client, message):
                 f"✅ Source <code>{source}</code> and target <code>{target}</code> successfully added.\n"
                 f"Worker running: <code>{started}</code>"
             )
+        elif action == "add_link_admin":
+            user_id = int(text)
+            user = await client.get_users(user_id)
+            await add_deeplink_admin(user_id, admin_id)
+            PENDING.pop(admin_id, None)
+            await message.reply_text(
+                f"✅ <b>{user_label(user)}</b> added as deeplink-only admin.\n"
+                "Allowed: media upload, <code>/genlink</code> and <code>/batch</code>."
+            )
+        elif action == "remove_link_admin":
+            user_id = int(text)
+            if not await remove_deeplink_admin(user_id, admin_id):
+                raise RuntimeError("This user is not a deeplink-only admin")
+            PENDING.pop(admin_id, None)
+            await message.reply_text("✅ Deeplink-only admin successfully removed.")
         elif action == "remove_pair":
             parts = text.split()
             if len(parts) not in (1, 2):

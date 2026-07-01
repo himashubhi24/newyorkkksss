@@ -65,6 +65,24 @@ class AutoRepostWorker:
             client.add_handler(MessageHandler(self._on_channel_post, filters.channel))
             try:
                 await client.start()
+                dialog_count = 0
+                async for _ in client.get_dialogs():
+                    dialog_count += 1
+                logger.info("Auto repost peer cache hydrated from %s dialogs", dialog_count)
+                for pair in state["pairs"]:
+                    source, target = int(pair["source"]), int(pair["target"])
+                    try:
+                        await client.get_chat(source)
+                        await client.get_chat(target)
+                        logger.info("Auto repost pair ready source=%s target=%s", source, target)
+                    except Exception as exc:
+                        await mark_repost_error(source, target, exc)
+                        logger.error(
+                            "Auto repost pair inaccessible source=%s target=%s: %s",
+                            source,
+                            target,
+                            exc,
+                        )
             except Exception:
                 logger.exception("Auto repost userbot failed to start")
                 if client.is_connected:

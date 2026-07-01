@@ -52,6 +52,25 @@ async def delete_page(message, include_command=False):
             pass
 
 
+async def expire_payment_qr(client, user_id, qr_message):
+    await asyncio.sleep(60)
+    try:
+        await qr_message.delete()
+    except Exception:
+        pass
+    plan = await get_pending_plan(user_id)
+    if not plan or plan.get("status") == "submitted":
+        return
+    prompt = await client.send_message(
+        user_id,
+        "📸 <b>Submit your payment screenshot</b>",
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🟢 Submit Your Screenshot", callback_data="pay:paid")]]
+        ),
+    )
+    asyncio.create_task(delete_later(prompt))
+
+
 @Bot.on_message(filters.command("mypremium") & filters.private, group=-90)
 async def my_premium(client, message):
     expiry = await check_premium_access(message.from_user.id)
@@ -189,12 +208,10 @@ async def payment_callbacks(client, query):
                     f"<b>💳 Premium Payment</b>\n\n"
                     f"Plan: <code>{days} days</code>\n"
                     f"Amount: <code>₹{price}</code>\n"
-                    "Pay the exact amount, then tap I Paid and send the payment screenshot."
-                ),
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("✅ I Paid", callback_data="pay:paid")]]
+                    "Pay the exact amount. This QR will close automatically in 1 minute."
                 ),
             )
+            asyncio.create_task(expire_payment_qr(client, user_id, sent))
             await delete_page(query.message)
             return
         if action == "paid":

@@ -8,8 +8,12 @@ from pyrogram.errors import FloodWait
 from bot import Bot
 from config import ADMINS, CHANNEL_ID, DISABLE_CHANNEL_BUTTON
 from helper_func import encode
+from premium.permissions import deeplink_admin
 
-@Bot.on_message(filters.private & filters.user(ADMINS) & ~filters.command(['start','users','broadcast','batch','genlink','stats','admin','premiumadmin']))
+
+DEEPLINK_CREATORS = filters.user(ADMINS) | deeplink_admin
+
+@Bot.on_message(filters.private & DEEPLINK_CREATORS & ~filters.command(['start','users','broadcast','batch','genlink','stats','admin','premiumadmin']))
 async def channel_post(client: Client, message: Message):
     reply_text = await message.reply_text("Please Wait...!", quote = True)
     try:
