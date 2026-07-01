@@ -90,7 +90,27 @@ python3 main.py
 /broadcast - broadcast any messages to bot users
 
 /stats - checking your bot uptime
+
+/premiumadmin - open the premium administration panel
 ```
+
+### Premium Administration
+
+The premium panel provides:
+
+* Telegram QR login, phone/OTP login, and raw Pyrogram session import
+* Per-account status with phone, name, username, and connection state
+* Persistent source/target pairs and guarded automatic reposting
+* Dynamic force-sub channel add/remove controls
+* Visible success and error messages for every administrative action
+
+Auto repost starts only when it is enabled and a valid user session plus at
+least one active source/target pair exist. The user account must be able to
+read the source and post in the target channel.
+
+QR login never stores QR images locally. Open Telegram Settings, choose
+Devices, then Link Desktop Device and scan the temporary QR shown by the bot.
+Use only an account you control.
 
 ### Variables
 
@@ -156,4 +176,3 @@ published by the Free Software Foundation, either version 3 of the License, or
 ##
 
    **Star this Repo if you Liked it ⭐⭐⭐**
-

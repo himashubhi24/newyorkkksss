@@ -51,7 +51,9 @@ async def start_command(client: Client, message: Message):
                 pass
 
         verify_status = await get_verify_status(id)
-        if verify_status['is_verified'] and VERIFY_EXPIRE < (time.time() - verify_status['verified_time']):
+        if not IS_VERIFY:
+            verify_status["is_verified"] = True
+        if IS_VERIFY and verify_status['is_verified'] and VERIFY_EXPIRE < (time.time() - verify_status['verified_time']):
             await update_verify_status(id, is_verified=False)
 
         if "verify_" in message.text:

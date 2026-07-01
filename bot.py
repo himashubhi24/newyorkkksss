@@ -27,6 +27,7 @@ class Bot(Client):
             bot_token=TG_BOT_TOKEN
         )
         self.LOGGER = LOGGER
+        self.auto_repost_worker = None
 
     async def start(self):
         await super().start()
@@ -74,6 +75,18 @@ class Bot(Client):
         bind_address = "0.0.0.0"
         await web.TCPSite(app, bind_address, PORT).start()
 
+        from premium.repost import AutoRepostWorker
+
+        self.auto_repost_worker = AutoRepostWorker()
+        try:
+            await self.auto_repost_worker.start()
+        except Exception as exc:
+            self.LOGGER(__name__).error(
+                "Auto repost was not started: %s. Bot remains online.", exc
+            )
+
     async def stop(self, *args):
+        if self.auto_repost_worker:
+            await self.auto_repost_worker.stop()
         await super().stop()
         self.LOGGER(__name__).info("Bot stopped.")
