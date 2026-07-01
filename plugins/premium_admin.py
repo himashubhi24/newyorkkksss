@@ -141,7 +141,7 @@ async def finish_qr_login(bot, admin_id, qr_client, qr_login, qr_message):
             await qr_client.disconnect()
 
 
-@Bot.on_callback_query(filters.regex(r"^premium:") & filters.user(ADMINS))
+@Bot.on_callback_query(filters.regex(r"^premium:") & filters.user(ADMINS), group=-90)
 async def premium_callbacks(client, query):
     action = query.data.split(":", 1)[1]
     admin_id = query.from_user.id

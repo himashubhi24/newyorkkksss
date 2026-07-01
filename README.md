@@ -103,6 +103,8 @@ The premium panel provides:
 * Persistent source/target pairs and guarded automatic reposting
 * Dynamic force-sub channel add/remove controls
 * Visible success and error messages for every administrative action
+* Premium payment review flow with generated UPI QR codes
+* Automatic premium extension, expiry reminders, and expiry cleanup
 
 Auto repost starts only when it is enabled and a valid user session plus at
 least one active source/target pair exist. The user account must be able to
@@ -111,6 +113,22 @@ read the source and post in the target channel.
 QR login never stores QR images locally. Open Telegram Settings, choose
 Devices, then Link Desktop Device and scan the temporary QR shown by the bot.
 Use only an account you control.
+
+### Premium Payments
+
+Configure `PREMIUM_PLANS` as comma-separated `DAYS:PRICE` entries, for example
+`7:49,30:99`. Set the target bot's own `UPI_ID`, `UPI_NAME`, and
+`PAYMENT_REVIEW_CHAT`. These values are deployment-specific and are never
+copied from another bot.
+
+Users select a plan, scan a generated UPI QR, tap **I Paid**, and submit a
+screenshot. An administrator approves or rejects the payment in the review
+chat. Approval extends any currently active expiry instead of replacing it.
+The in-process maintenance worker sends a reminder within 24 hours of expiry
+and automatically removes expired access.
+
+Admin commands: `/addpremium USER_ID DAYS`, `/removepremium USER_ID`.
+User command: `/mypremium`.
 
 ### Variables
 

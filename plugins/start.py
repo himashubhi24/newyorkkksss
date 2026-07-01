@@ -3,10 +3,6 @@ import asyncio
 import base64
 import logging
 import os
-import random
-import re
-import string
-import time
 
 from pyrogram import Client, filters, __version__
 from pyrogram.enums import ParseMode
@@ -19,18 +15,12 @@ from config import (
     FORCE_MSG,
     START_MSG,
     CUSTOM_CAPTION,
-    IS_VERIFY,
-    VERIFY_EXPIRE,
-    SHORTLINK_API,
-    SHORTLINK_URL,
     DISABLE_CHANNEL_BUTTON,
     PROTECT_CONTENT,
-    TUT_VID,
     OWNER_ID,
 )
-from helper_func import subscribed, encode, decode, get_messages, get_shortlink, get_verify_status, update_verify_status, get_exp_time
-from database.database import add_user, del_user, full_userbase, present_user
-from shortzy import Shortzy
+from helper_func import subscribed, encode, decode, get_messages
+from database.database import add_user, check_premium_access, del_user, full_userbase, present_user
 
 @Bot.on_message(filters.command('start') & filters.private & subscribed)
 async def start_command(client: Client, message: Message):
@@ -50,22 +40,7 @@ async def start_command(client: Client, message: Message):
             except:
                 pass
 
-        verify_status = await get_verify_status(id)
-        if not IS_VERIFY:
-            verify_status["is_verified"] = True
-        if IS_VERIFY and verify_status['is_verified'] and VERIFY_EXPIRE < (time.time() - verify_status['verified_time']):
-            await update_verify_status(id, is_verified=False)
-
-        if "verify_" in message.text:
-            _, token = message.text.split("_", 1)
-            if verify_status['verify_token'] != token:
-                return await message.reply("Your token is invalid or Expired. Try again by clicking /start")
-            await update_verify_status(id, is_verified=True, verified_time=time.time())
-            if verify_status["link"] == "":
-                reply_markup = None
-            await message.reply(f"Your token successfully verified and valid for: 24 Hour", reply_markup=reply_markup, protect_content=False, quote=True)
-
-        elif len(message.text) > 7 and verify_status['is_verified']:
+        if len(message.text) > 7:
             try:
                 base64_string = message.text.split(" ", 1)[1]
             except:
@@ -93,6 +68,17 @@ async def start_command(client: Client, message: Message):
                     ids = [int(int(argument[1]) / abs(client.db_channel.id))]
                 except:
                     return
+            else:
+                return
+            premium_expiry = await check_premium_access(id)
+            if not premium_expiry:
+                return await message.reply_text(
+                    "<b>🔒 Premium Access Required</b>\n\n"
+                    "Purchase premium to open protected file links.",
+                    reply_markup=InlineKeyboardMarkup(
+                        [[InlineKeyboardButton("✨ Get Premium", callback_data="buy_access")]]
+                    ),
+                )
             temp_msg = await message.reply("Please wait...")
             try:
                 messages = await get_messages(client, ids)
@@ -121,37 +107,31 @@ async def start_command(client: Client, message: Message):
                 except:
                     pass
 
-        elif verify_status['is_verified']:
+        else:
+            premium_expiry = await check_premium_access(id)
+            if premium_expiry:
+                status = "💎 Premium User"
+                expiry = premium_expiry.strftime("%d %b %Y, %I:%M %p")
+            else:
+                status = "🆓 Free User"
+                expiry = "Not active"
             reply_markup = InlineKeyboardMarkup(
-                [[InlineKeyboardButton("About Me", callback_data="about"),
-                  InlineKeyboardButton("Close", callback_data="close")]]
+                [
+                    [InlineKeyboardButton("✨ Get Premium", callback_data="buy_access")],
+                    [InlineKeyboardButton("About Me", callback_data="about"),
+                     InlineKeyboardButton("Close", callback_data="close")],
+                ]
             )
             await message.reply_text(
-                text=START_MSG.format(
-                    first=message.from_user.first_name,
-                    last=message.from_user.last_name,
-                    username=None if not message.from_user.username else '@' + message.from_user.username,
-                    mention=message.from_user.mention,
-                    id=message.from_user.id
+                text=(
+                    f"<b>👤 {message.from_user.first_name}</b>\n\n"
+                    f"Status: <code>{status}</code>\n"
+                    f"Expiry: <code>{expiry}</code>"
                 ),
                 reply_markup=reply_markup,
                 disable_web_page_preview=True,
                 quote=True
             )
-
-        else:
-            verify_status = await get_verify_status(id)
-            if IS_VERIFY and not verify_status['is_verified']:
-                short_url = f"api.shareus.io"
-                full_tut_url = f"https://t.me/neprosz/3"
-                token = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
-                await update_verify_status(id, verify_token=token, link="")
-                link = await get_shortlink(SHORTLINK_URL, SHORTLINK_API,f'https://telegram.dog/{client.username}?start=verify_{token}')
-                btn = [
-                    [InlineKeyboardButton("Click here", url=link)],
-                    [InlineKeyboardButton('How to use the bot', url=full_tut_url)]
-                ]
-                await message.reply(f"Your Ads token is expired, refresh your token and try again.\n\nToken Timeout: {get_exp_time(VERIFY_EXPIRE)}\n\nWhat is the token?\n\nThis is an ads token. If you pass 1 ad, you can use the bot for 24 Hour after passing the ad.", reply_markup=InlineKeyboardMarkup(btn), protect_content=False, quote=True)
 
 # ... (rest of the code remains unchanged))
 

@@ -83,6 +83,29 @@ if OWNER_ID not in ADMINS:
 
 AUTO_REPOST_ENABLED = os.environ.get("AUTO_REPOST_ENABLED", "False") == "True"
 
+
+def parse_premium_plans(raw):
+    plans = {}
+    for item in (raw or "").split(","):
+        if not item.strip():
+            continue
+        try:
+            days, price = item.split(":", 1)
+            days, price = int(days), int(price)
+        except (TypeError, ValueError):
+            raise RuntimeError("PREMIUM_PLANS must use DAYS:PRICE,DAYS:PRICE format")
+        if days < 1 or price < 1:
+            raise RuntimeError("Premium plan days and prices must be positive")
+        plans[days] = price
+    return plans
+
+
+PREMIUM_PLANS = parse_premium_plans(os.environ.get("PREMIUM_PLANS", ""))
+UPI_ID = os.environ.get("UPI_ID", "").strip()
+UPI_NAME = os.environ.get("UPI_NAME", "Premium Access").strip()
+PAYMENT_REVIEW_CHAT = int(os.environ.get("PAYMENT_REVIEW_CHAT", str(OWNER_ID)))
+PAYMENT_EXPIRY_MINUTES = int(os.environ.get("PAYMENT_EXPIRY_MINUTES", "30"))
+
 LOG_FILE_NAME = "filesharingbot.txt"
 
 logging.basicConfig(

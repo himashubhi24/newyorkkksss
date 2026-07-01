@@ -28,6 +28,7 @@ class Bot(Client):
         )
         self.LOGGER = LOGGER
         self.auto_repost_worker = None
+        self.premium_expiry_worker = None
 
     async def start(self):
         await super().start()
@@ -85,7 +86,14 @@ class Bot(Client):
                 "Auto repost was not started: %s. Bot remains online.", exc
             )
 
+        from premium.expiry import PremiumExpiryWorker
+
+        self.premium_expiry_worker = PremiumExpiryWorker(self)
+        await self.premium_expiry_worker.start()
+
     async def stop(self, *args):
+        if self.premium_expiry_worker:
+            await self.premium_expiry_worker.stop()
         if self.auto_repost_worker:
             await self.auto_repost_worker.stop()
         await super().stop()
