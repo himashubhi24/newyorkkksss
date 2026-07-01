@@ -228,7 +228,15 @@ async def convert_one(bot, userbot, link, logger):
         return converted
 
 
-def converted_markup(message, replacements):
+def has_foreign_deeplink(value, own_username):
+    for match in DEEPLINK_RE.finditer(value or ""):
+        username = match.group("bot") or match.group("atbot")
+        if username.lower() != str(own_username).lower():
+            return True
+    return False
+
+
+def converted_markup(message, replacements, own_username):
     markup = getattr(message, "reply_markup", None)
     if not markup:
         return None
@@ -241,7 +249,7 @@ def converted_markup(message, replacements):
                 continue
             for old, new in replacements.items():
                 url = url.replace(old, new)
-            if DEEPLINK_RE.search(url):
+            if has_foreign_deeplink(url, own_username):
                 return None
             new_row.append(InlineKeyboardButton(button.text, url=url))
         if new_row:
@@ -263,12 +271,12 @@ async def convert_post(bot, userbot, message, logger):
     text = message_text(message)
     for old, new in replacements.items():
         text = text.replace(old, new)
-    if DEEPLINK_RE.search(text):
+    if has_foreign_deeplink(text, bot.username):
         return None
-    markup = converted_markup(message, replacements)
+    markup = converted_markup(message, replacements, bot.username)
     original_markup = getattr(message, "reply_markup", None)
     if original_markup and any(
-        DEEPLINK_RE.search(getattr(button, "url", "") or "")
+        has_foreign_deeplink(getattr(button, "url", "") or "", bot.username)
         for row in original_markup.inline_keyboard or []
         for button in row
     ) and markup is None:
