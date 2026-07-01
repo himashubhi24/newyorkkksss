@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from database.database import database
 
@@ -58,7 +58,7 @@ async def set_auto_repost_enabled(enabled, updated_by=None):
     return await set_setting("auto_repost_enabled", bool(enabled), updated_by)
 
 
-async def add_repost_pair(source, target, updated_by=None):
+async def add_repost_pair(source, target, updated_by=None, interval_hours=0):
     result = await repost_pairs.update_one(
         {"source": int(source), "target": int(target)},
         {
@@ -66,6 +66,8 @@ async def add_repost_pair(source, target, updated_by=None):
                 "active": True,
                 "updated_at": _now(),
                 "updated_by": updated_by,
+                "next_post_at": None,
+                "interval_hours": int(interval_hours),
             },
             "$setOnInsert": {"created_at": _now(), "processed": 0},
         },
@@ -104,6 +106,60 @@ async def mark_repost_error(source, target, error):
     )
 
 
+async def set_repost_interval(source, target, hours, updated_by=None):
+    result = await repost_pairs.update_one(
+        {"source": int(source), "target": int(target)},
+        {
+            "$set": {
+                "interval_hours": int(hours),
+                "updated_at": _now(),
+                "updated_by": updated_by,
+                "next_post_at": None,
+            }
+        },
+    )
+    return result.matched_count
+
+
+async def enqueue_repost(source, target, message_id):
+    await repost_pairs.update_one(
+        {"source": int(source), "target": int(target), "active": True},
+        {
+            "$addToSet": {"pending_message_ids": int(message_id)},
+            "$set": {"updated_at": _now()},
+        },
+    )
+
+
+async def get_due_repost_pairs(now):
+    query = {
+        "active": True,
+        "pending_message_ids.0": {"$exists": True},
+        "$or": [
+            {"next_post_at": {"$exists": False}},
+            {"next_post_at": None},
+            {"next_post_at": {"$lte": now}},
+        ],
+    }
+    return [item async for item in repost_pairs.find(query)]
+
+
+async def complete_queued_repost(source, target, message_id, interval_hours):
+    next_post_at = _now() + timedelta(hours=max(0, int(interval_hours)))
+    await repost_pairs.update_one(
+        {"source": int(source), "target": int(target)},
+        {
+            "$pull": {"pending_message_ids": int(message_id)},
+            "$inc": {"processed": 1},
+            "$set": {
+                "last_post_at": _now(),
+                "last_error": None,
+                "next_post_at": next_post_at,
+            },
+        },
+    )
+
+
 async def get_force_sub_channels():
     value = await get_setting("force_sub_channels", [])
     return value if isinstance(value, list) else []
@@ -115,6 +171,23 @@ async def add_force_sub_channel(channel):
     channels.append(channel)
     await set_setting("force_sub_channels", channels, channel.get("added_by"))
     return channel
+
+
+async def remember_join_request(channel_id, user_id):
+    await database["premium_join_requests"].update_one(
+        {"channel_id": int(channel_id), "user_id": int(user_id)},
+        {"$set": {"requested_at": _now()}},
+        upsert=True,
+    )
+
+
+async def has_join_request(channel_id, user_id):
+    return bool(
+        await database["premium_join_requests"].find_one(
+            {"channel_id": int(channel_id), "user_id": int(user_id)},
+            {"_id": 1},
+        )
+    )
 
 
 async def remove_force_sub_channel(channel_id):

@@ -33,6 +33,7 @@ from premium.storage import (
     remove_userbot_session,
     save_userbot_session,
     set_auto_repost_enabled,
+    set_repost_interval,
 )
 
 
@@ -45,8 +46,8 @@ def panel_markup():
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("📱 Phone Login", callback_data="premium:phone"),
-                InlineKeyboardButton("📷 QR Login", callback_data="premium:qr"),
+                InlineKeyboardButton("🔵 Phone Login", callback_data="premium:phone"),
+                InlineKeyboardButton("🟣 QR Login", callback_data="premium:qr"),
             ],
             [
                 InlineKeyboardButton("🔑 Add Session", callback_data="premium:session"),
@@ -56,12 +57,16 @@ def panel_markup():
                 InlineKeyboardButton("📥 Add Source/Target", callback_data="premium:add_pair"),
                 InlineKeyboardButton("🗑 Remove Pair", callback_data="premium:remove_pair"),
             ],
+            [InlineKeyboardButton("⏱ Set Repost Interval", callback_data="premium:set_interval")],
             [
-                InlineKeyboardButton("▶️ Enable Repost", callback_data="premium:enable"),
-                InlineKeyboardButton("⏸ Disable Repost", callback_data="premium:disable"),
+                InlineKeyboardButton("🟢 Enable Repost", callback_data="premium:enable"),
+                InlineKeyboardButton("🔴 Disable Repost", callback_data="premium:disable"),
             ],
             [
-                InlineKeyboardButton("➕ Add Force Sub", callback_data="premium:add_fsub"),
+                InlineKeyboardButton("🔵 Normal Join", callback_data="premium:add_fsub"),
+                InlineKeyboardButton("🟣 Request Join", callback_data="premium:add_request_fsub"),
+            ],
+            [
                 InlineKeyboardButton("➖ Remove Force Sub", callback_data="premium:remove_fsub"),
             ],
             [
@@ -209,6 +214,14 @@ async def premium_callbacks(client, query):
             await query.answer("Send pair to remove")
             await query.message.reply_text("Send <code>-100SOURCE -100TARGET</code>, or only source to remove all its targets.")
             return
+        if action == "set_interval":
+            PENDING[admin_id] = "set_interval"
+            await query.answer("Set repost interval")
+            await query.message.reply_text(
+                "⏱ Send: <code>-100SOURCE -100TARGET HOURS</code>\n"
+                "Use <code>0</code> for instant repost or <code>1-24</code> hours."
+            )
+            return
         if action == "enable":
             await set_auto_repost_enabled(True, admin_id)
             started = await restart_worker(client)
@@ -242,6 +255,13 @@ async def premium_callbacks(client, query):
             await query.answer("Send force-sub channel ID")
             await query.message.reply_text("Send a numeric channel ID. Bot must be a member/admin there.")
             return
+        if action == "add_request_fsub":
+            PENDING[admin_id] = "add_request_fsub"
+            await query.answer("Send request-to-join channel ID")
+            await query.message.reply_text(
+                "📝 Send a numeric request-to-join channel ID. Bot must be admin with invite permission."
+            )
+            return
         if action == "remove_fsub":
             PENDING[admin_id] = "remove_fsub"
             await query.answer("Send channel ID")
@@ -262,6 +282,8 @@ async def premium_callbacks(client, query):
             for pair in pairs[:20]:
                 lines.append(
                     f"<code>{pair['source']}</code> → <code>{pair['target']}</code> "
+                    f"• interval <code>{pair.get('interval_hours', 0)}h</code> "
+                    f"• queued <code>{len(pair.get('pending_message_ids') or [])}</code> "
                     f"• processed <code>{pair.get('processed', 0)}</code> "
                     f"• error <code>{pair.get('last_error') or '-'}</code>"
                 )
@@ -379,23 +401,49 @@ async def premium_pending_input(client, message):
             PENDING.pop(admin_id, None)
             await restart_worker(client)
             await message.reply_text(f"✅ Successfully removed <code>{removed}</code> repost pair(s).")
-        elif action == "add_fsub":
+        elif action == "set_interval":
+            parts = text.split()
+            if len(parts) != 3:
+                raise ValueError("Send exactly: -100SOURCE -100TARGET HOURS")
+            source, target, hours = map(int, parts)
+            if hours < 0 or hours > 24:
+                raise ValueError("Hours must be between 0 and 24")
+            if not await set_repost_interval(source, target, hours, admin_id):
+                raise RuntimeError("No matching source/target pair found")
+            PENDING.pop(admin_id, None)
+            await restart_worker(client)
+            mode = "instant" if hours == 0 else f"every {hours} hour(s)"
+            await message.reply_text(f"✅ Repost interval successfully set to <code>{mode}</code>.")
+        elif action in ("add_fsub", "add_request_fsub"):
             channel_id = int(text)
             chat = await client.get_chat(channel_id)
             me = await client.get_me()
             await client.get_chat_member(channel_id, me.id)
-            link = getattr(chat, "invite_link", None)
-            if not link:
-                link = await client.export_chat_invite_link(channel_id)
+            request_mode = action == "add_request_fsub"
+            if request_mode:
+                invite = await client.create_chat_invite_link(
+                    channel_id,
+                    creates_join_request=True,
+                    name="Premium Request FSub",
+                )
+                link = invite.invite_link
+            else:
+                link = getattr(chat, "invite_link", None)
+                if not link:
+                    link = await client.export_chat_invite_link(channel_id)
             item = {
                 "id": channel_id,
                 "title": chat.title or "Channel",
                 "link": link,
                 "added_by": admin_id,
+                "request_mode": request_mode,
             }
             await add_force_sub_channel(item)
             PENDING.pop(admin_id, None)
-            await message.reply_text(f"✅ <b>{item['title']}</b> successfully added to force subscribe.")
+            mode = "request-to-join" if request_mode else "normal"
+            await message.reply_text(
+                f"✅ <b>{item['title']}</b> successfully added as {mode} force subscribe."
+            )
         elif action == "remove_fsub":
             removed = await remove_force_sub_channel(int(text))
             if not removed:
